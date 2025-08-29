@@ -27,3 +27,18 @@ def test_persistence(tmp_path):
     # Reload from disk
     cellar2 = WineCellar(filepath=str(cellar_file))
     assert len(cellar2.list_bottles()) == 1
+
+
+def test_edit_bottle(tmp_path):
+    cellar_file = tmp_path / "cellar.json"
+    cellar = WineCellar(filepath=str(cellar_file))
+    bottle = cellar.add_bottle("Old Wine", 2000)
+
+    assert cellar.edit_bottle(bottle.id, name="New Wine", year=2001) is True
+    edited = cellar.bottles[bottle.id]
+    assert edited.name == "New Wine"
+    assert edited.year == 2001
+    assert "New+Wine+2001" in edited.vivino_url
+
+    assert cellar.edit_bottle(999, name="Nope") is False
+

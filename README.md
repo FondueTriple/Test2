@@ -26,3 +26,11 @@ Exécuter les tests avec:
 ```bash
 pytest
 ```
+
+## Interface utilisateur
+
+Un petit menu interactif est disponible pour gérer la cave directement depuis le terminal:
+
+```bash
+python wine_ui.py
+```
