@@ -12,6 +12,8 @@ class Bottle:
     comments: List[str] = field(default_factory=list)
     vivino_url: str = ""
     vivino_rating: float = 0.0
+    pos_row: Optional[int] = None  # 1..6
+    pos_col: Optional[int] = None  # 1..4
 
 
 class WineCellar:
@@ -68,6 +70,8 @@ class WineCellar:
         name: Optional[str] = None,
         year: Optional[int] = None,
         vivino_rating: Optional[float] = None,
+        pos_row: Optional[int] = None,
+        pos_col: Optional[int] = None,
     ) -> bool:
         """Edit the name and/or year of an existing bottle.
 
@@ -80,12 +84,44 @@ class WineCellar:
             bottle.name = name
         if year is not None:
             bottle.year = year
+        changed = False
         if vivino_rating is not None:
             # Clamp rating between 0 and 5
             bottle.vivino_rating = max(0.0, min(5.0, float(vivino_rating)))
+            changed = True
+        # Handle position updates: if both provided, set; if one is None -> clear both
+        if pos_row is not None or pos_col is not None:
+            if pos_row is None or pos_col is None:
+                # Clear position
+                if bottle.pos_row is not None or bottle.pos_col is not None:
+                    bottle.pos_row = None
+                    bottle.pos_col = None
+                    changed = True
+            else:
+                # Validate ranges (1..6 rows, 1..4 cols)
+                if not (1 <= int(pos_row) <= 6 and 1 <= int(pos_col) <= 4):
+                    # Ignore invalid position silently
+                    pass
+                else:
+                    r = int(pos_row)
+                    c = int(pos_col)
+                    # Ensure uniqueness: clear any other bottle occupying (r,c)
+                    for other in self.bottles.values():
+                        if other.id != bottle.id and other.pos_row == r and other.pos_col == c:
+                            other.pos_row = None
+                            other.pos_col = None
+                            changed = True
+                    bottle.pos_row = r
+                    bottle.pos_col = c
+                    changed = True
+        if name is not None:
+            bottle.vivino_url = generate_vivino_url(bottle.name, bottle.year)
+            changed = True
+        if year is not None:
+            changed = True
         if name is not None or year is not None:
             bottle.vivino_url = generate_vivino_url(bottle.name, bottle.year)
-        if name is not None or year is not None or vivino_rating is not None:
+        if changed:
             self.save()
         return True
 

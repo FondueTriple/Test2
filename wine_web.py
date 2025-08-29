@@ -120,7 +120,7 @@ def page(title: str, body: str) -> str:
 
       form.inline {{ display: inline; margin: 0; }}
       .row {{ margin: .75rem 0; }}
-      input[type=text], input[type=number] {{
+      input[type=text], input[type=number], select {{
         width: 100%;
         padding: .5rem .6rem;
         border: 1px solid var(--line);
@@ -145,6 +145,32 @@ def page(title: str, body: str) -> str:
         color: var(--accent);
         text-shadow: 0 0 6px rgba(201,162,39,.25);
       }}
+
+      /* Rack (4x6) */
+      .rack-wrap {{ margin: 1rem 0 1.5rem; }}
+      .rack-title {{ margin: 0 0 .5rem; color: var(--muted); font-weight: 600; }}
+      .rack {{
+        display: grid;
+        grid-template-columns: repeat(4, 64px);
+        grid-template-rows: repeat(6, 64px);
+        gap: .5rem;
+        padding: .75rem;
+        background: #16110f;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+      }}
+      .slot {{
+        display: flex; align-items: center; justify-content: center;
+        border: 1px dashed #3a2f2a; border-radius: 10px; color: var(--muted);
+        background: radial-gradient(120px 90px at 50% 30%, #1c1613 0%, #14100e 80%);
+        position: relative;
+        cursor: pointer;
+      }}
+      .slot.occ {{ border-style: solid; border-color: var(--accent-2); color: var(--text); }}
+      .slot .dot {{ font-size: 20px; line-height: 1; }}
+      .slot .mini {{ position: absolute; bottom: 6px; left: 8px; color: var(--muted); font-size: .7rem; }}
+      .slot:hover {{ outline: 1px solid var(--accent-2); }}
+      .rack-controls {{ display: flex; gap: .75rem; align-items: center; margin: 0 0 .75rem; }}
     </style>
   </head>
   <body>
@@ -186,9 +212,40 @@ def list_view(info: str = ""):
             </tr>
             """
         )
+
+    # Build rack occupancy (4 cols x 6 rows)
+    occ = {}
+    for b in cellar.list_bottles():
+        r = getattr(b, 'pos_row', None)
+        c = getattr(b, 'pos_col', None)
+        if r and c and 1 <= r <= 6 and 1 <= c <= 4 and (r, c) not in occ:
+            occ[(r, c)] = b
+    rack_cells = []
+    for r in range(1, 7):
+        for c in range(1, 5):
+            bb = occ.get((r, c))
+            if bb:
+                rack_cells.append(f"<div class=\"slot occ\" data-r=\"{r}\" data-c=\"{c}\" title=\"{escape(bb.name)}\"><span class=\"dot\">●</span><span class=\"mini\">{r},{c}</span></div>")
+            else:
+                rack_cells.append(f"<div class=\"slot\" data-r=\"{r}\" data-c=\"{c}\"><span class=\"mini\">{r},{c}</span></div>")
+
     flash = f"<p class=\"muted\">{escape(info)}</p>" if info else ""
-    body = f"""
+  body = f"""
       {flash}
+      <div class=\"rack-wrap\">
+        <div class=\"rack-title\">Cave (4 × 6) — survolez pour voir le nom, cliquez pour placer</div>
+        <form id=\"place-form\" method=\"post\" action=\"/place\" class=\"rack-controls\">
+          <label>Bouteille à placer
+            <select id=\"bottle-select\" name=\"id\">
+              <option value=\"\">(Sélectionner...)</option>
+              {''.join(f'<option value=\"{b.id}\">[{b.id}] {escape(b.name)} ({b.year})</option>' for b in cellar.list_bottles())}
+            </select>
+          </label>
+          <input type=\"hidden\" name=\"row\" id=\"place-row\" />
+          <input type=\"hidden\" name=\"col\" id=\"place-col\" />
+        </form>
+        <div class=\"rack\" id=\"rack\">{''.join(rack_cells)}</div>
+      </div>
       <div class=\"row\">
         <form method=\"post\" action=\"/fetch_all_ratings\" class=\"inline\">
           <button class=\"btn\" type=\"submit\">↻ Mettre à jour toutes les notes</button>
@@ -206,10 +263,47 @@ def list_view(info: str = ""):
       <form method=\"post\" action=\"/add\" class=\"grid\">
         <label>Nom<br><input type=\"text\" name=\"name\" required /></label>
         <label>Millésime<br><input type=\"number\" name=\"year\" min=\"1900\" max=\"2100\" required /></label>
+        <label>Colonne (1–4)<br>
+          <select name=\"pos_col\">
+            <option value=\"\">(Non placé)</option>
+            <option>1</option><option>2</option><option>3</option><option>4</option>
+          </select>
+        </label>
+        <label>Ligne (1–6)<br>
+          <select name=\"pos_row\">
+            <option value=\"\">(Non placé)</option>
+            <option>1</option><option>2</option><option>3</option>
+            <option>4</option><option>5</option><option>6</option>
+          </select>
+        </label>
         <div class=\"row\"><button class=\"btn\" type=\"submit\">Ajouter</button></div>
       </form>
     """
-    return page("Cave à vins", body)
+    # Add minimal JS to enable rack clicks
+    script = """
+    <script>
+    (function(){
+      var rack = document.getElementById('rack');
+      var sel = document.getElementById('bottle-select');
+      var form = document.getElementById('place-form');
+      var rInput = document.getElementById('place-row');
+      var cInput = document.getElementById('place-col');
+      if (rack && sel && form && rInput && cInput) {
+        rack.addEventListener('click', function(e){
+          var t = e.target;
+          while (t && !t.classList.contains('slot')) t = t.parentElement;
+          if (!t) return;
+          var r = t.getAttribute('data-r');
+          var c = t.getAttribute('data-c');
+          var bid = sel.value;
+          if (!bid) { alert('Sélectionnez d\'abord une bouteille.'); return; }
+          rInput.value = r; cInput.value = c; form.submit();
+        });
+      }
+    })();
+    </script>
+    """
+    return page("Cave à vins", body + script)
 
 
 def edit_view(bottle_id: int):
@@ -224,6 +318,26 @@ def edit_view(bottle_id: int):
         <label>Nom<br><input type=\"text\" name=\"name\" value=\"{escape(b.name)}\" required /></label>
         <label>Millésime<br><input type=\"number\" name=\"year\" value=\"{b.year}\" min=\"1900\" max=\"2100\" required /></label>
         <label>Note Vivino (0–5)<br><input type=\"number\" name=\"vivino_rating\" step=\"0.1\" min=\"0\" max=\"5\" value=\"{getattr(b, 'vivino_rating', 0.0):.1f}\" /></label>
+        <label>Colonne (1–4)<br>
+          <select name=\"pos_col\">
+            <option value=\"\"{'' if (b.pos_col and b.pos_row) else ' selected'}>(Non placé)</option>
+            <option value=\"1\"{(' selected' if b.pos_col == 1 else '')}>1</option>
+            <option value=\"2\"{(' selected' if b.pos_col == 2 else '')}>2</option>
+            <option value=\"3\"{(' selected' if b.pos_col == 3 else '')}>3</option>
+            <option value=\"4\"{(' selected' if b.pos_col == 4 else '')}>4</option>
+          </select>
+        </label>
+        <label>Ligne (1–6)<br>
+          <select name=\"pos_row\">
+            <option value=\"\"{'' if (b.pos_col and b.pos_row) else ' selected'}>(Non placé)</option>
+            <option value=\"1\"{(' selected' if b.pos_row == 1 else '')}>1</option>
+            <option value=\"2\"{(' selected' if b.pos_row == 2 else '')}>2</option>
+            <option value=\"3\"{(' selected' if b.pos_row == 3 else '')}>3</option>
+            <option value=\"4\"{(' selected' if b.pos_row == 4 else '')}>4</option>
+            <option value=\"5\"{(' selected' if b.pos_row == 5 else '')}>5</option>
+            <option value=\"6\"{(' selected' if b.pos_row == 6 else '')}>6</option>
+          </select>
+        </label>
         <div class=\"row\"><button class=\"btn\" type=\"submit\">Enregistrer</button>
           <form class=\"inline\" method=\"post\" action=\"/fetch_rating\">\n            <input type=\"hidden\" name=\"id\" value=\"{b.id}\" />\n            <button class=\"btn\" type=\"submit\">↻ Mettre à jour automatiquement</button>\n          </form>
         </div>
@@ -259,6 +373,15 @@ def app(environ, start_response):
         if not name:
             return response(start_response, "400 Bad Request", page("Erreur", "<p>Nom requis.</p>"))
         bottle = cellar.add_bottle(name, year)
+        # Optional position on add
+        pos_col_raw = (form.get("pos_col") or "").strip()
+        pos_row_raw = (form.get("pos_row") or "").strip()
+        if pos_col_raw and pos_row_raw:
+            try:
+                pc = int(pos_col_raw); pr = int(pos_row_raw)
+                cellar.edit_bottle(bottle.id, pos_row=pr, pos_col=pc)
+            except ValueError:
+                pass
         # Attempt immediate rating fetch (best-effort)
         try:
             fetch_and_update_rating(bottle.id)
@@ -283,6 +406,8 @@ def app(environ, start_response):
         name = (form.get("name") or "").strip()
         year_raw = (form.get("year") or "").strip()
         rating_raw = (form.get("vivino_rating") or "").strip()
+        pos_col_raw = (form.get("pos_col") or "").strip()
+        pos_row_raw = (form.get("pos_row") or "").strip()
         try:
             year = int(year_raw)
         except ValueError:
@@ -295,7 +420,18 @@ def app(environ, start_response):
                 rating = float(rating_raw)
             except ValueError:
                 return response(start_response, "400 Bad Request", page("Erreur", "<p>Note Vivino invalide.</p>"))
-        cellar.edit_bottle(bid, name=name, year=year, vivino_rating=rating)
+        # Position: require both to set; otherwise clear
+        if pos_col_raw and pos_row_raw:
+            try:
+                pc = int(pos_col_raw)
+                pr = int(pos_row_raw)
+                pr_set: Optional[int] = pr
+                pc_set: Optional[int] = pc
+            except ValueError:
+                pr_set = None; pc_set = None
+        else:
+            pr_set = None; pc_set = None
+        cellar.edit_bottle(bid, name=name, year=year, vivino_rating=rating, pos_row=pr_set, pos_col=pc_set)
         return redirect(start_response, f"/edit?id={bid}")
 
     if method == "POST" and path == "/delete":
@@ -321,10 +457,18 @@ def app(environ, start_response):
                 pass
         return redirect(start_response, f"/edit?id={bid}")
 
-    if method == "POST" and path == "/fetch_all_ratings":
-        ok, fail = fetch_all_and_counts()
-        msg = f"Notes mises à jour: {ok} succès, {fail} échecs"
-        return redirect(start_response, f"/?info={quote_plus(msg)}")
+    if method == "POST" and path == "/place":
+        form = read_post(environ)
+        try:
+            bid = int(form.get("id", ""))
+            r = int(form.get("row", ""))
+            c = int(form.get("col", ""))
+        except ValueError:
+            return response(start_response, "400 Bad Request", page("Erreur", "<p>Données invalides.</p>"))
+        if not (1 <= r <= 6 and 1 <= c <= 4):
+            return response(start_response, "400 Bad Request", page("Erreur", "<p>Position hors limites.</p>"))
+        cellar.edit_bottle(bid, pos_row=r, pos_col=c)
+        return redirect(start_response, f"/?info={quote_plus(f'Placée en {r},{c}')}" )
 
     if method == "POST" and path == "/fetch_rating":
         form = read_post(environ)
@@ -332,12 +476,16 @@ def app(environ, start_response):
             bid = int(form.get("id", ""))
         except ValueError:
             return response(start_response, "400 Bad Request", page("Erreur", "<p>ID invalide.</p>"))
-        # Try to fetch and update rating; ignore details in UI, redirect back
         try:
             fetch_and_update_rating(bid)
         except Exception:
             pass
         return redirect(start_response, f"/edit?id={bid}")
+
+    if method == "POST" and path == "/fetch_all_ratings":
+        ok, fail = fetch_all_and_counts()
+        msg = f"Notes mises à jour: {ok} succès, {fail} échecs"
+        return redirect(start_response, f"/?info={quote_plus(msg)}")
 
     return response(start_response, "404 Not Found", page("404", "<p>Page introuvable.</p>"))
 
@@ -359,9 +507,8 @@ def fetch_and_update_rating(bottle_id: int) -> Tuple[bool, str]:
     if rating is None:
         m = re.search(r"href=\"(https?://[^\"]+?/w/\d+[^\"]*)\"", html)
         if not m:
-            m = re.search(r"href=\"(/[^\"]+?/w/\d+[^\"]*)\"", html)
-            base = "https://www.vivino.com"
-            wine_url = base + m.group(1) if m else None
+            m2 = re.search(r"href=\"(/[^\"]+?/w/\d+[^\"]*)\"", html)
+            wine_url = ("https://www.vivino.com" + m2.group(1)) if m2 else None
         else:
             wine_url = m.group(1)
         if wine_url:
