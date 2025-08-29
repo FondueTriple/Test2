@@ -7,6 +7,7 @@ import re
 import urllib.request
 import urllib.error
 import socket
+import json
 
 from wine_cellar import WineCellar
 
@@ -230,7 +231,7 @@ def list_view(info: str = ""):
                 rack_cells.append(f"<div class=\"slot\" data-r=\"{r}\" data-c=\"{c}\"><span class=\"mini\">{r},{c}</span></div>")
 
     flash = f"<p class=\"muted\">{escape(info)}</p>" if info else ""
-  body = f"""
+    body = f"""
       {flash}
       <div class=\"rack-wrap\">
         <div class=\"rack-title\">Cave (4 × 6) — survolez pour voir le nom, cliquez pour placer</div>
@@ -280,8 +281,10 @@ def list_view(info: str = ""):
       </form>
     """
     # Add minimal JS to enable rack clicks
+    occ_js = json.dumps({f"{r},{c}": ob.id for (r, c), ob in occ.items()})
     script = """
     <script>
+    var RACK_OCC = {occ_js};
     (function(){
       var rack = document.getElementById('rack');
       var sel = document.getElementById('bottle-select');
@@ -290,11 +293,14 @@ def list_view(info: str = ""):
       var cInput = document.getElementById('place-col');
       if (rack && sel && form && rInput && cInput) {
         rack.addEventListener('click', function(e){
-          var t = e.target;
-          while (t && !t.classList.contains('slot')) t = t.parentElement;
+          var target = e.target;
+          var t = target.closest ? target.closest('.slot') : (function(x){ var y=x; while (y && !(y.classList && y.classList.contains('slot'))) y = y.parentElement; return y; })(target);
           if (!t) return;
           var r = t.getAttribute('data-r');
           var c = t.getAttribute('data-c');
+          // If no selection yet, clicking an occupied slot selects that bottle first
+          var key = String(r)+','+String(c);
+          if (!sel.value && typeof RACK_OCC !== 'undefined' && RACK_OCC[key]) { sel.value = String(RACK_OCC[key]); return; }
           var bid = sel.value;
           if (!bid) { alert('Sélectionnez d\'abord une bouteille.'); return; }
           rInput.value = r; cInput.value = c; form.submit();
@@ -302,7 +308,7 @@ def list_view(info: str = ""):
       }
     })();
     </script>
-    """
+    """.replace("{occ_js}", occ_js)
     return page("Cave à vins", body + script)
 
 
