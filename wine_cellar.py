@@ -11,6 +11,7 @@ class Bottle:
     year: int
     comments: List[str] = field(default_factory=list)
     vivino_url: str = ""
+    vivino_rating: float = 0.0
 
 
 class WineCellar:
@@ -62,7 +63,11 @@ class WineCellar:
         return False
 
     def edit_bottle(
-        self, bottle_id: int, name: Optional[str] = None, year: Optional[int] = None
+        self,
+        bottle_id: int,
+        name: Optional[str] = None,
+        year: Optional[int] = None,
+        vivino_rating: Optional[float] = None,
     ) -> bool:
         """Edit the name and/or year of an existing bottle.
 
@@ -75,8 +80,12 @@ class WineCellar:
             bottle.name = name
         if year is not None:
             bottle.year = year
+        if vivino_rating is not None:
+            # Clamp rating between 0 and 5
+            bottle.vivino_rating = max(0.0, min(5.0, float(vivino_rating)))
         if name is not None or year is not None:
             bottle.vivino_url = generate_vivino_url(bottle.name, bottle.year)
+        if name is not None or year is not None or vivino_rating is not None:
             self.save()
         return True
 
