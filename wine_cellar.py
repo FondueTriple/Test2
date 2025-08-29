@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field, asdict
-from typing import List, Dict
+from typing import List, Dict, Optional
 import json
 import urllib.parse
 
@@ -60,6 +60,25 @@ class WineCellar:
             self.save()
             return True
         return False
+
+    def edit_bottle(
+        self, bottle_id: int, name: Optional[str] = None, year: Optional[int] = None
+    ) -> bool:
+        """Edit the name and/or year of an existing bottle.
+
+        Returns True if the bottle was found and updated, False otherwise.
+        """
+        bottle = self.bottles.get(bottle_id)
+        if bottle is None:
+            return False
+        if name is not None:
+            bottle.name = name
+        if year is not None:
+            bottle.year = year
+        if name is not None or year is not None:
+            bottle.vivino_url = generate_vivino_url(bottle.name, bottle.year)
+            self.save()
+        return True
 
     def add_comment(self, bottle_id: int, comment: str) -> None:
         bottle = self.bottles.get(bottle_id)
