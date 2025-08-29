@@ -34,3 +34,26 @@ Un petit menu interactif est disponible pour gérer la cave directement depuis l
 ```bash
 python wine_ui.py
 ```
+
+## Interface web
+
+Deux options sont disponibles:
+
+- Sans dépendances (WSGI simple): `python wine_web.py` → ouvrir `http://127.0.0.1:8000`
+- Version Flask (recommandée): instructions ci‑dessous
+
+### Version Flask
+
+Installation des dépendances (dans votre venv):
+
+```bash
+pip install -r requirements.txt
+```
+
+Lancer le serveur de développement:
+
+```bash
+python app_flask.py
+```
+
+Puis ouvrir `http://127.0.0.1:5000` dans votre navigateur pour lister, ajouter, éditer, commenter et supprimer des bouteilles.

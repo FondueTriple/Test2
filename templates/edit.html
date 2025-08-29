@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% block title %}Cave à vins — Éditer{% endblock %}
+{% block body %}
+
+<h2>Éditer la bouteille #{{ b.id }}</h2>
+
+<form method="post" action="{{ url_for('edit_save', bid=b.id) }}" class="grid">
+  <label>Nom<br><input type="text" name="name" value="{{ b.name }}" required></label>
+  <label>Millésime<br><input type="number" name="year" value="{{ b.year }}" min="1900" max="2100" required></label>
+  <div class="row"><button class="btn" type="submit">Enregistrer</button></div>
+  <div></div>
+</form>
+
+<h3>Commentaires</h3>
+<ul>
+  {% if b.comments %}
+    {% for c in b.comments %}<li>{{ c }}</li>{% endfor %}
+  {% else %}
+    <li class="muted">(aucun)</li>
+  {% endif %}
+</ul>
+
+<form method="post" action="{{ url_for('comment', bid=b.id) }}" class="row">
+  <input type="text" name="text" placeholder="Ajouter un commentaire" required>
+  <button class="btn" type="submit">Ajouter</button>
+  <a class="btn" href="{{ url_for('index') }}">Retour</a>
+</form>
+
+{% endblock %}
+

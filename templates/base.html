@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Cave à vins{% endblock %}</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body { font-family: system-ui, Arial, sans-serif; margin: 2rem; }
+      .container { max-width: 1000px; }
+      a { color: #0b62d6; text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      table { border-collapse: collapse; width: 100%; }
+      th, td { padding: .5rem .75rem; border-bottom: 1px solid #e6e6e6; text-align: left; }
+      .muted { color: #666; }
+      .btn { padding: .35rem .6rem; border: 1px solid #888; border-radius: .35rem; background: #f9f9f9; cursor: pointer; }
+      .btn.danger { border-color: #c33; color: #c33; background: #fff6f6; }
+      .row { margin: .5rem 0; }
+      input[type=text], input[type=number] { padding: .35rem .5rem; border: 1px solid #ccc; border-radius: .25rem; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+      @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
+      header { display: flex; align-items: baseline; gap: 1rem; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1 style="margin: 0;">Cave à vins</h1>
+        <nav><a href="{{ url_for('index') }}">Liste</a></nav>
+      </header>
+      {% block body %}{% endblock %}
+    </div>
+  </body>
+  </html>
+
