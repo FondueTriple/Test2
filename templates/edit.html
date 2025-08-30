@@ -7,6 +7,12 @@
 <form method="post" action="{{ url_for('edit_save', bid=b.id) }}" class="grid">
   <label>Nom<br><input type="text" name="name" value="{{ b.name }}" required></label>
   <label>Millésime<br><input type="number" name="year" value="{{ b.year }}" min="1900" max="2100" required></label>
+  <label>Couleur<br>
+    <select name="color">
+      <option value="red" {% if b.color == 'red' %}selected{% endif %}>Rouge</option>
+      <option value="white" {% if b.color == 'white' %}selected{% endif %}>Blanc</option>
+    </select>
+  </label>
   <div class="row"><button class="btn" type="submit">Enregistrer</button></div>
   <div></div>
 </form>

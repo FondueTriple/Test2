@@ -22,7 +22,8 @@ def add():
         return render_template("error.html", message="Millésime invalide"), 400
     if not name:
         return render_template("error.html", message="Nom requis"), 400
-    cellar.add_bottle(name, year)
+    color = (request.form.get("color") or "red").strip().lower()
+    cellar.add_bottle(name, year, color=color)
     return redirect(url_for("index"))
 
 
@@ -41,11 +42,12 @@ def edit_save(bid: int):
         return render_template("error.html", message="Bouteille introuvable"), 404
     name = (request.form.get("name") or "").strip()
     year_raw = (request.form.get("year") or "").strip()
+    color = (request.form.get("color") or bottle.color).strip().lower()
     try:
         year = int(year_raw)
     except ValueError:
         return render_template("error.html", message="Millésime invalide"), 400
-    cellar.edit_bottle(bid, name=name, year=year)
+    cellar.edit_bottle(bid, name=name, year=year, color=color)
     return redirect(url_for("edit_view", bid=bid))
 
 

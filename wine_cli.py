@@ -1,6 +1,8 @@
 import argparse
 from wine_cellar import WineCellar
 
+COLOR_CODES = {"red": "\033[31m", "white": "\033[33m"}
+
 
 def main():
     parser = argparse.ArgumentParser(description="Manage your wine cellar")
@@ -9,6 +11,7 @@ def main():
     add_parser = subparsers.add_parser("add", help="Add a new bottle")
     add_parser.add_argument("name", help="Name of the wine")
     add_parser.add_argument("year", type=int, help="Vintage year")
+    add_parser.add_argument("--color", choices=["red", "white"], default="red", help="Wine color")
 
     remove_parser = subparsers.add_parser("remove", help="Remove a bottle")
     remove_parser.add_argument("id", type=int, help="ID of the bottle to remove")
@@ -23,9 +26,9 @@ def main():
     cellar = WineCellar()
 
     if args.command == "add":
-        bottle = cellar.add_bottle(args.name, args.year)
+        bottle = cellar.add_bottle(args.name, args.year, color=args.color)
         print(
-            f"Added bottle {bottle.id}: {bottle.name} ({bottle.year}) - {bottle.vivino_url}"
+            f"Added bottle {bottle.id}: {bottle.name} ({bottle.year}, {bottle.color}) - {bottle.vivino_url}"
         )
     elif args.command == "remove":
         if cellar.remove_bottle(args.id):
@@ -40,7 +43,9 @@ def main():
             print("Bottle not found")
     elif args.command == "list":
         for b in cellar.list_bottles():
-            print(f"{b.id}: {b.name} ({b.year}) - {b.vivino_url}")
+            color = COLOR_CODES.get(b.color, "")
+            reset = "\033[0m" if color else ""
+            print(f"{b.id}: {color}{b.name}{reset} ({b.year}, {b.color}) - {b.vivino_url}")
             for c in b.comments:
                 print(f"  - {c}")
     else:

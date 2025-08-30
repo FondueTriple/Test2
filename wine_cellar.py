@@ -9,6 +9,7 @@ class Bottle:
     id: int
     name: str
     year: int
+    color: str = "red"
     comments: List[str] = field(default_factory=list)
     vivino_url: str = ""
     vivino_rating: float = 0.0
@@ -45,11 +46,12 @@ class WineCellar:
         with open(self.filepath, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
 
-    def add_bottle(self, name: str, year: int) -> Bottle:
+    def add_bottle(self, name: str, year: int, color: str = "red") -> Bottle:
         bottle = Bottle(
             id=self._next_id,
             name=name,
             year=year,
+            color=color,
             vivino_url=generate_vivino_url(name, year),
         )
         self.bottles[bottle.id] = bottle
@@ -69,6 +71,7 @@ class WineCellar:
         bottle_id: int,
         name: Optional[str] = None,
         year: Optional[int] = None,
+        color: Optional[str] = None,
         vivino_rating: Optional[float] = None,
         pos_row: Optional[int] = None,
         pos_col: Optional[int] = None,
@@ -85,6 +88,9 @@ class WineCellar:
         if year is not None:
             bottle.year = year
         changed = False
+        if color is not None:
+            bottle.color = color
+            changed = True
         if vivino_rating is not None:
             # Clamp rating between 0 and 5
             bottle.vivino_rating = max(0.0, min(5.0, float(vivino_rating)))

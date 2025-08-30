@@ -1,5 +1,7 @@
 from wine_cellar import WineCellar
 
+COLOR_CODES = {"red": "\033[31m", "white": "\033[33m"}
+
 
 def main():
     cellar = WineCellar()
@@ -13,13 +15,16 @@ def main():
         choice = input("Choix: ")
         if choice == "1":
             for b in cellar.list_bottles():
-                print(f"{b.id}: {b.name} ({b.year}) - {b.vivino_url}")
+                color = COLOR_CODES.get(b.color, "")
+                reset = "\033[0m" if color else ""
+                print(f"{b.id}: {color}{b.name}{reset} ({b.year}, {b.color}) - {b.vivino_url}")
                 for c in b.comments:
                     print(f"  - {c}")
         elif choice == "2":
             name = input("Nom: ")
             year = int(input("Millésime: "))
-            bottle = cellar.add_bottle(name, year)
+            color_in = input("Couleur (red/white) [red]: ").strip().lower() or "red"
+            bottle = cellar.add_bottle(name, year, color=color_in)
             print(f"Bouteille ajoutée {bottle.id}")
         elif choice == "3":
             try:
@@ -34,7 +39,8 @@ def main():
             new_name = input(f"Nouveau nom [{bottle.name}]: ") or bottle.name
             year_input = input(f"Nouveau millésime [{bottle.year}]: ")
             new_year = int(year_input) if year_input else bottle.year
-            cellar.edit_bottle(bottle_id, name=new_name, year=new_year)
+            color_in = input(f"Nouvelle couleur [{bottle.color}]: ").strip().lower() or bottle.color
+            cellar.edit_bottle(bottle_id, name=new_name, year=new_year, color=color_in)
             print("Bouteille mise à jour")
         elif choice == "4":
             try:
