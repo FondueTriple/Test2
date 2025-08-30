@@ -1,0 +1,200 @@
+        if sort_col == "name":
+            return (str(getattr(x, 'name', '')).lower(),)
+        if sort_col == "year":
+            return (int(getattr(x, 'year', 0) or 0),)
+        if sort_col == "rating":
+            v = getattr(x, 'vivino_rating', None)
+            try:
+                return (float(v) if v is not None else -1.0,)
+            except Exception:
+                return (-1.0,)
+        return (int(getattr(x, 'year', 0) or 0), str(getattr(x, 'name', '')).lower())
+
+    rows = []
+    for b in sorted(cellar.list_bottles(), key=sort_key, reverse=reverse):
+        comments = "".join(f"<div class=\"muted\">• {escape(c)}</div>" for c in b.comments)
+        rating = getattr(b, 'vivino_rating', 0.0) or 0.0
+        pct = max(0, min(5.0, float(rating))) / 5.0 * 100.0
+        stars = (
+            f"<span class=\"stars\" aria-label=\"Note Vivino: {rating:.1f}/5\">"
+            f"<span class=\"base\">★★★★★</span>"
+            f"<span class=\"fill\" style=\"width: {pct:.0f}%\">★★★★★</span>"
+            f"</span>"
+        )
+        rows.append(
+            f"""
+            <tr>
+              <td>{b.id}</td>
+              <td class=\"cell-name\"><strong>{escape(b.name)}</strong><br><small class=\"muted\">{b.vivino_url and f'<a href=\"{escape(b.vivino_url)}\" target=\"_blank\" rel=\"noopener\">Vivino</a>' or ''}</small></td>
+              <td>{b.year}</td>
+              <td>{stars} <span class=\"muted\">{(rating and f'{rating:.1f}') or ''}</span></td>
+              <td>{comments or '<span class=\"muted\">(aucun)</span>'}</td>
+              <td class=\"actions\">
+                <form class=\"inline\" method=\"post\" action=\"/fetch_rating\">\n                  <input type=\"hidden\" name=\"id\" value=\"{b.id}\" />\n                  <button class=\"btn\" type=\"submit\" title=\"Mettre à jour la note automatiquement\">↻ Note</button>\n                </form>
+                <form class=\"inline\" method=\"get\" action=\"/edit\">\n                  <input type=\"hidden\" name=\"id\" value=\"{b.id}\" />\n                  <button class=\"btn\" type=\"submit\">Éditer</button>\n                </form>
+                <form class=\"inline\" method=\"post\" action=\"/delete\" onsubmit=\"return confirm('Supprimer cette bouteille ?');\">\n                  <input type=\"hidden\" name=\"id\" value=\"{b.id}\" />\n                  <button class=\"btn danger\" type=\"submit\">Supprimer</button>\n                </form>
+              </td>
+            </tr>
+            """
+        )
+
+    # Build rack occupancy (4 cols x 6 rows)
+    occ = {}
+    for b in cellar.list_bottles():
+        r = getattr(b, 'pos_row', None)
+        c = getattr(b, 'pos_col', None)
+        if r and c and 1 <= r <= 6 and 1 <= c <= 4 and (r, c) not in occ:
+            occ[(r, c)] = b
+    rack_cells = []
+    for r in range(1, 7):
+        for c in range(1, 5):
+            bb = occ.get((r, c))
+            if bb:
+                rack_cells.append(f"<div class=\"slot occ\" data-r=\"{r}\" data-c=\"{c}\" title=\"{escape(bb.name)}\"><span class=\"dot\">●</span><span class=\"mini\">{r},{c}</span></div>")
+            else:
+                rack_cells.append(f"<div class=\"slot\" data-r=\"{r}\" data-c=\"{c}\"><span class=\"mini\">{r},{c}</span></div>")
+
+    # Post-process rack cells to tag red wines
+    # Inject an extra 'red' class for occupied slots with color == 'red'
+    new_rack = []
+    idx = 0
+    for r in range(1, 7):
+        for c in range(1, 5):
+            s = rack_cells[idx]
+            bb = occ.get((r, c))
+            if bb and str(getattr(bb, 'color', '')).lower() == 'red':
+                s = s.replace('class="slot occ"', 'class="slot occ red"')
+            new_rack.append(s)
+            idx += 1
+    rack_cells = new_rack
+
+    flash = f"<p class=\"muted\">{escape(info)}</p>" if info else ""
+    body = f"""
+      {flash}
+      <div class=\"rack-wrap\">
+        <div class=\"rack-title\">Cave (4 × 6) — survolez pour voir le nom, cliquez pour placer</div>
+        <form id=\"place-form\" method=\"post\" action=\"/place\" class=\"rack-controls\">
+          <label>Bouteille à placer
+            <select id=\"bottle-select\" name=\"id\">
+              <option value=\"\">(Sélectionner...)</option>
+              {''.join(f'<option value=\"{b.id}\">[{b.id}] {escape(b.name)} ({b.year})</option>' for b in cellar.list_bottles())}
+            </select>
+          </label>
+          <input type=\"hidden\" name=\"row\" id=\"place-row\" />
+          <input type=\"hidden\" name=\"col\" id=\"place-col\" />
+        </form>
+        <div class=\"rack\" id=\"rack\">{''.join(rack_cells)}</div>
+      </div>
+      <div class=\"row\">
+        <form method=\"post\" action=\"/fetch_all_ratings\" class=\"inline\">
+          <button class=\"btn\" type=\"submit\">↻ Mettre à jour toutes les notes</button>
+        </form>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th><a href=\"/?sort=id&dir={( 'desc' if (sort_col=='id' and sort_dir=='asc') else 'asc' )}\">ID</a></th>
+            <th><a href=\"/?sort=name&dir={( 'desc' if (sort_col=='name' and sort_dir=='asc') else 'asc' )}\">Nom</a></th>
+            <th><a href=\"/?sort=year&dir={( 'desc' if (sort_col=='year' and sort_dir=='asc') else 'asc' )}\">Millésime</a></th>
+            <th><a href=\"/?sort=rating&dir={( 'desc' if (sort_col=='rating' and sort_dir=='asc') else 'asc' )}\">Note</a></th>
+            <th>Commentaires</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {''.join(rows) or '<tr><td colspan=6 class=\'muted\'>Aucune bouteille</td></tr>'}
+        </tbody>
+      </table>
+      <h2>Ajouter une bouteille</h2>
+      <form method=\"post\" action=\"/add\" class=\"grid\">
+        <label>Nom<br><input type=\"text\" name=\"name\" required /></label>
+        <label>Couleur<br>
+          <select name=\"color\">
+            <option value=\"white\">Blanc</option>
+            <option value=\"red\">Rouge</option>
+          </select>
+        </label>
+        <label>Millésime<br><input type=\"number\" name=\"year\" min=\"1900\" max=\"2100\" required /></label>
+        <label>Colonne (1–4)<br>
+          <select name=\"pos_col\">
+            <option value=\"\">(Non placé)</option>
+            <option>1</option><option>2</option><option>3</option><option>4</option>
+          </select>
+        </label>
+        <label>Ligne (1–6)<br>
+          <select name=\"pos_row\">
+            <option value=\"\">(Non placé)</option>
+            <option>1</option><option>2</option><option>3</option>
+            <option>4</option><option>5</option><option>6</option>
+          </select>
+        </label>
+        <div class=\"row\"><button class=\"btn\" type=\"submit\">Ajouter</button></div>
+      </form>
+    """
+    # Add minimal JS to enable rack clicks
+    occ_js = json.dumps({f"{r},{c}": ob.id for (r, c), ob in occ.items()})
+    script = """
+    <script>
+    var RACK_OCC = {occ_js};
+    (function(){
+      var rack = document.getElementById('rack');
+      var sel = document.getElementById('bottle-select');
+      var form = document.getElementById('place-form');
+      var rInput = document.getElementById('place-row');
+      var cInput = document.getElementById('place-col');
+      if (rack && sel && form && rInput && cInput) {
+        rack.addEventListener('click', function(e){
+          var target = e.target;
+          var t = target.closest ? target.closest('.slot') : (function(x){ var y=x; while (y && !(y.classList && y.classList.contains('slot'))) y = y.parentElement; return y; })(target);
+          if (!t) return;
+          var r = t.getAttribute('data-r');
+          var c = t.getAttribute('data-c');
+          // If no selection yet, clicking an occupied slot selects that bottle first
+          var key = String(r)+','+String(c);
+          if (!sel.value && typeof RACK_OCC !== 'undefined' && RACK_OCC[key]) { sel.value = String(RACK_OCC[key]); return; }
+          var bid = sel.value;
+          if (!bid) { alert('Sélectionnez d\'abord une bouteille.'); return; }
+          rInput.value = r; cInput.value = c; form.submit();
+        });
+      }
+
+      // Table sorting by clicking headers
+      var table = document.querySelector('table');
+      if (table && table.tBodies && table.tBodies[0]) {
+        var tbody = table.tBodies[0];
+        var headers = table.querySelectorAll('thead th');
+        var hasLinks = false;
+        for (var li = 0; li < headers.length; li++) { if (headers[li].querySelector('a')) { hasLinks = true; break; } }
+        if (!hasLinks) {
+          var numericCols = {0: true, 2: true, 3: true}; // ID, Millésime, Note
+          for (var i = 0; i < headers.length; i++) {
+            (function(idx){
+              var th = headers[idx];
+              th.style.cursor = 'pointer';
+              th.title = 'Trier';
+              th.addEventListener('click', function(){
+                var dir = th.getAttribute('data-dir') === 'asc' ? 'desc' : 'asc';
+                Array.prototype.forEach.call(headers, function(h){ h.removeAttribute('data-dir'); });
+                th.setAttribute('data-dir', dir);
+                var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+                rows.sort(function(a,b){
+                  var ta = a.children[idx] ? a.children[idx].innerText.trim() : '';
+                  var tb = b.children[idx] ? b.children[idx].innerText.trim() : '';
+                  if (numericCols[idx]) {
+                    var fa = parseFloat(ta.replace(/[^0-9.\-]/g, ''));
+                    var fb = parseFloat(tb.replace(/[^0-9.\-]/g, ''));
+                    if (isNaN(fa)) fa = -Infinity;
+                    if (isNaN(fb)) fb = -Infinity;
+                    return fa - fb;
+                  }
+                  return ta.localeCompare(tb);
+                });
+                if (dir === 'desc') rows.reverse();
+                rows.forEach(function(r){ tbody.appendChild(r); });
+              });
+            })(i);
+          }
+        }
+      }
+    })();
+    </script>

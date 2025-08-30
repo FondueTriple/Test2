@@ -1,0 +1,320 @@
+from wsgiref.simple_server import make_server
+from wsgiref.validate import validator
+from urllib.parse import parse_qs, quote_plus
+from html import escape
+from typing import Dict, Iterable, Tuple, Optional
+import re
+import urllib.request
+import urllib.error
+import socket
+import json
+
+from wine_cellar import WineCellar
+
+
+cellar = WineCellar()
+
+
+def read_post(environ) -> Dict[str, str]:
+    try:
+        size = int(environ.get("CONTENT_LENGTH", 0))
+    except (TypeError, ValueError):
+        size = 0
+    data = environ["wsgi.input"].read(size) if size > 0 else b""
+    fields = {}
+    for k, v in parse_qs(data.decode("utf-8"), keep_blank_values=True).items():
+        fields[k] = v[0]
+    return fields
+
+
+def response(start, status: str, body: str, headers: Optional[Iterable[Tuple[str, str]]] = None):
+    b = body.encode("utf-8")
+    base = [("Content-Type", "text/html; charset=utf-8"), ("Content-Length", str(len(b)))]
+    extra = list(headers) if headers is not None else []
+    start(status, base + extra)
+    return [b]
+
+
+def redirect(start, location: str):
+    # Ensure Content-Length is set by using response helper
+    return response(start, "303 See Other", "", headers=[("Location", location)])
+
+
+def page(title: str, body: str) -> str:
+    return f"""
+<!DOCTYPE html>
+<html lang=\"fr\">
+  <head>
+    <meta charset=\"utf-8\" />
+    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+    <title>{escape(title)}</title>
+    <style>
+      :root {{
+        --bg: #0f0b0a;
+        --panel: #1b1513;
+        --panel-2: #231b18;
+        --text: #f2ece6;
+        --muted: #a39286;
+        --line: #2a211e;
+        --accent: #c9a227;
+        --accent-2: #8b6a2b;
+        --danger: #c05858;
+      }}
+      html, body {{ height: 100%; }}
+      body {{
+        margin: 0;
+        font-family: Georgia, 'Times New Roman', serif;
+        color: var(--text);
+        background:
+          radial-gradient(1200px 800px at 10% -20%, #241915 0%, transparent 65%),
+          radial-gradient(1200px 800px at 110% 120%, #271d19 0%, transparent 65%),
+          linear-gradient(180deg, #100c0a 0%, #0b0908 100%);
+      }}
+      a {{ color: var(--accent); text-decoration: none; }}
+      a:hover {{ text-decoration: underline; }}
+      .container {{
+        max-width: 1100px;
+        margin: 2rem auto;
+        padding: 2rem;
+        background: linear-gradient(180deg, var(--panel) 0%, var(--panel-2) 100%);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        box-shadow: 0 10px 30px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.04);
+      }}
+      h1 {{
+        margin: 0 0 1.25rem 0;
+        font-weight: 600;
+        letter-spacing: .5px;
+      }}
+      .subnav {{ margin-bottom: 1rem; color: var(--muted); }}
+      .subnav a {{ color: var(--muted); }}
+      .subnav a.active {{ color: var(--accent); font-weight: 600; }}
+
+      table {{ border-collapse: collapse; width: 100%; }}
+      thead th {{
+        font-weight: 600;
+        color: var(--text);
+        text-align: left;
+        border-bottom: 2px solid var(--line);
+        padding: .75rem .75rem;
+        background: rgba(255,255,255,0.02);
+      }}
+      tbody td {{
+        padding: .6rem .75rem;
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
+      }}
+      .muted {{ color: var(--muted); }}
+      .cell-name small {{ display: inline-block; margin-top: .25rem; }}
+      .actions {{ white-space: nowrap; }}
+
+      .btn {{
+        padding: .45rem .7rem;
+        border: 1px solid var(--accent-2);
+        background: linear-gradient(180deg, rgba(201,162,39,.15), rgba(201,162,39,.05));
+        color: var(--text);
+        border-radius: 8px;
+        cursor: pointer;
+      }}
+      .btn:hover {{ filter: brightness(1.05); }}
+      .btn.danger {{ border-color: var(--danger); color: #ffd9d9; background: linear-gradient(180deg, rgba(192,88,88,.18), rgba(192,88,88,.06)); }}
+
+      form.inline {{ display: inline; margin: 0; }}
+      .row {{ margin: .75rem 0; }}
+      input[type=text], input[type=number], select {{
+        width: 100%;
+        padding: .5rem .6rem;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #120e0c;
+        color: var(--text);
+      }}
+      label {{ font-size: .95rem; color: var(--muted); }}
+      .grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }}
+      @media (max-width: 720px) {{ .grid {{ grid-template-columns: 1fr; }} }}
+
+      /* Star rating (fractional) */
+      .stars {{ position: relative; display: inline-block; line-height: 1; }}
+      .stars .base, .stars .fill {{
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+        letter-spacing: 2px;
+        font-size: 1rem;
+      }}
+      .stars .base {{ color: #4b3f39; }}
+      .stars .fill {{
+        position: absolute; left: 0; top: 0; overflow: hidden; white-space: nowrap;
+        color: var(--accent);
+        text-shadow: 0 0 6px rgba(201,162,39,.25);
+      }}
+
+      /* Rack (4x6) */
+      .rack-wrap {{ margin: 1rem 0 1.5rem; }}
+      .rack-title {{ margin: 0 0 .5rem; color: var(--muted); font-weight: 600; }}
+      .rack {{
+        display: grid;
+        grid-template-columns: repeat(4, 64px);
+        grid-template-rows: repeat(6, 64px);
+        gap: .5rem;
+        padding: .75rem;
+        background: #16110f;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+      }}
+      .slot {{
+        display: flex; align-items: center; justify-content: center;
+        border: 1px dashed #3a2f2a; border-radius: 10px; color: var(--muted);
+        background: radial-gradient(120px 90px at 50% 30%, #1c1613 0%, #14100e 80%);
+        position: relative;
+        cursor: pointer;
+      }}
+      .slot.occ {{ border-style: solid; border-color: var(--accent-2); color: var(--text); }}
+      .slot.occ.red {{
+        border-color: #b33939;
+        background: radial-gradient(120px 90px at 50% 30%, #3a1a1a 0%, #1a0e0e 80%);
+        box-shadow: inset 0 0 8px rgba(179,57,57,.35);
+      }}
+      .slot .dot {{ font-size: 20px; line-height: 1; }}
+      .slot .mini {{ position: absolute; bottom: 6px; left: 8px; color: var(--muted); font-size: .7rem; }}
+      .slot:hover {{ outline: 1px solid var(--accent-2); }}
+      .rack-controls {{ display: flex; gap: .75rem; align-items: center; margin: 0 0 .75rem; }}
+    </style>
+  </head>
+  <body>
+    <div class=\"container\">
+      <h1>{escape(title)}</h1>
+      <p class=\"subnav\"><a class=\"active\" href=\"/\">Liste des bouteilles</a> · <a href=\"/add\">Ajouter</a></p>
+      {body}
+    </div>
+  </body>
+</html>
+"""
+
+
+def list_view(info: str = "", sort_col: str = "year", sort_dir: str = "asc"):
+    # Compute sorting
+    sort_col = (sort_col or "year").lower()
+    sort_dir = (sort_dir or "asc").lower()
+    reverse = sort_dir == "desc"
+    def sort_key(x):
+        if sort_col == "id":
+            return (x.id,)
+        if sort_col == "name":
+            return (str(getattr(x, 'name', '')).lower(),)
+        if sort_col == "year":
+            return (int(getattr(x, 'year', 0) or 0),)
+        if sort_col == "rating":
+            v = getattr(x, 'vivino_rating', None)
+            try:
+                return (float(v) if v is not None else -1.0,)
+            except Exception:
+                return (-1.0,)
+        return (int(getattr(x, 'year', 0) or 0), str(getattr(x, 'name', '')).lower())
+
+    rows = []
+    for b in sorted(cellar.list_bottles(), key=sort_key, reverse=reverse):
+        comments = "".join(f"<div class=\"muted\">• {escape(c)}</div>" for c in b.comments)
+        rating = getattr(b, 'vivino_rating', 0.0) or 0.0
+        pct = max(0, min(5.0, float(rating))) / 5.0 * 100.0
+        stars = (
+            f"<span class=\"stars\" aria-label=\"Note Vivino: {rating:.1f}/5\">"
+            f"<span class=\"base\">★★★★★</span>"
+            f"<span class=\"fill\" style=\"width: {pct:.0f}%\">★★★★★</span>"
+            f"</span>"
+        )
+        rows.append(
+            f"""
+            <tr>
+              <td>{b.id}</td>
+              <td class=\"cell-name\"><strong>{escape(b.name)}</strong><br><small class=\"muted\">{b.vivino_url and f'<a href=\"{escape(b.vivino_url)}\" target=\"_blank\" rel=\"noopener\">Vivino</a>' or ''}</small></td>
+              <td>{b.year}</td>
+              <td>{stars} <span class=\"muted\">{(rating and f'{rating:.1f}') or ''}</span></td>
+              <td>{comments or '<span class=\"muted\">(aucun)</span>'}</td>
+              <td class=\"actions\">
+                <form class=\"inline\" method=\"post\" action=\"/fetch_rating\">\n                  <input type=\"hidden\" name=\"id\" value=\"{b.id}\" />\n                  <button class=\"btn\" type=\"submit\" title=\"Mettre à jour la note automatiquement\">↻ Note</button>\n                </form>
+                <form class=\"inline\" method=\"get\" action=\"/edit\">\n                  <input type=\"hidden\" name=\"id\" value=\"{b.id}\" />\n                  <button class=\"btn\" type=\"submit\">Éditer</button>\n                </form>
+                <form class=\"inline\" method=\"post\" action=\"/delete\" onsubmit=\"return confirm('Supprimer cette bouteille ?');\">\n                  <input type=\"hidden\" name=\"id\" value=\"{b.id}\" />\n                  <button class=\"btn danger\" type=\"submit\">Supprimer</button>\n                </form>
+              </td>
+            </tr>
+            """
+        )
+
+    # Build rack occupancy (4 cols x 6 rows)
+    occ = {}
+    for b in cellar.list_bottles():
+        r = getattr(b, 'pos_row', None)
+        c = getattr(b, 'pos_col', None)
+        if r and c and 1 <= r <= 6 and 1 <= c <= 4 and (r, c) not in occ:
+            occ[(r, c)] = b
+    rack_cells = []
+    for r in range(1, 7):
+        for c in range(1, 5):
+            bb = occ.get((r, c))
+            if bb:
+                rack_cells.append(f"<div class=\"slot occ\" data-r=\"{r}\" data-c=\"{c}\" title=\"{escape(bb.name)}\"><span class=\"dot\">●</span><span class=\"mini\">{r},{c}</span></div>")
+            else:
+                rack_cells.append(f"<div class=\"slot\" data-r=\"{r}\" data-c=\"{c}\"><span class=\"mini\">{r},{c}</span></div>")
+
+    # Post-process rack cells to tag red wines
+    # Inject an extra 'red' class for occupied slots with color == 'red'
+    new_rack = []
+    idx = 0
+    for r in range(1, 7):
+        for c in range(1, 5):
+            s = rack_cells[idx]
+            bb = occ.get((r, c))
+            if bb and str(getattr(bb, 'color', '')).lower() == 'red':
+                s = s.replace('class="slot occ"', 'class="slot occ red"')
+            new_rack.append(s)
+            idx += 1
+    rack_cells = new_rack
+
+    flash = f"<p class=\"muted\">{escape(info)}</p>" if info else ""
+    body = f"""
+      {flash}
+      <div class=\"rack-wrap\">
+        <div class=\"rack-title\">Cave (4 × 6) — survolez pour voir le nom, cliquez pour placer</div>
+        <form id=\"place-form\" method=\"post\" action=\"/place\" class=\"rack-controls\">
+          <label>Bouteille à placer
+            <select id=\"bottle-select\" name=\"id\">
+              <option value=\"\">(Sélectionner...)</option>
+              {''.join(f'<option value=\"{b.id}\">[{b.id}] {escape(b.name)} ({b.year})</option>' for b in cellar.list_bottles())}
+            </select>
+          </label>
+          <input type=\"hidden\" name=\"row\" id=\"place-row\" />
+          <input type=\"hidden\" name=\"col\" id=\"place-col\" />
+        </form>
+        <div class=\"rack\" id=\"rack\">{''.join(rack_cells)}</div>
+      </div>
+      <div class=\"row\">
+        <form method=\"post\" action=\"/fetch_all_ratings\" class=\"inline\">
+          <button class=\"btn\" type=\"submit\">↻ Mettre à jour toutes les notes</button>
+        </form>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th><a href=\"/?sort=id&dir={( 'desc' if (sort_col=='id' and sort_dir=='asc') else 'asc' )}\">ID</a></th>
+            <th><a href=\"/?sort=name&dir={( 'desc' if (sort_col=='name' and sort_dir=='asc') else 'asc' )}\">Nom</a></th>
+            <th><a href=\"/?sort=year&dir={( 'desc' if (sort_col=='year' and sort_dir=='asc') else 'asc' )}\">Millésime</a></th>
+            <th><a href=\"/?sort=rating&dir={( 'desc' if (sort_col=='rating' and sort_dir=='asc') else 'asc' )}\">Note</a></th>
+            <th>Commentaires</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {''.join(rows) or '<tr><td colspan=6 class=\'muted\'>Aucune bouteille</td></tr>'}
+        </tbody>
+      </table>
+      <h2>Ajouter une bouteille</h2>
+      <form method=\"post\" action=\"/add\" class=\"grid\">
+        <label>Nom<br><input type=\"text\" name=\"name\" required /></label>
+        <label>Couleur<br>
+          <select name=\"color\">
+            <option value=\"white\">Blanc</option>
+            <option value=\"red\">Rouge</option>
+          </select>
+        </label>
+        <label>Millésime<br><input type=\"number\" name=\"year\" min=\"1900\" max=\"2100\" required /></label>
+        <label>Colonne (1–4)<br>
+          <select name=\"pos_col\">
+            <option value=\"\">(Non placé)</option>

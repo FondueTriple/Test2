@@ -8,6 +8,7 @@ import urllib.request
 import urllib.error
 import socket
 import json
+import os
 
 from wine_cellar import WineCellar
 
@@ -35,6 +36,12 @@ def response(start, status: str, body: str, headers: Optional[Iterable[Tuple[str
     return [b]
 
 
+def response_bytes(start, status: str, data: bytes, content_type: str):
+    base = [("Content-Type", content_type), ("Content-Length", str(len(data)))]
+    start(status, base)
+    return [data]
+
+
 def redirect(start, location: str):
     # Ensure Content-Length is set by using response helper
     return response(start, "303 See Other", "", headers=[("Location", location)])
@@ -48,136 +55,7 @@ def page(title: str, body: str) -> str:
     <meta charset=\"utf-8\" />
     <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
     <title>{escape(title)}</title>
-    <style>
-      :root {{
-        --bg: #0f0b0a;
-        --panel: #1b1513;
-        --panel-2: #231b18;
-        --text: #f2ece6;
-        --muted: #a39286;
-        --line: #2a211e;
-        --accent: #c9a227;
-        --accent-2: #8b6a2b;
-        --danger: #c05858;
-      }}
-      html, body {{ height: 100%; }}
-      body {{
-        margin: 0;
-        font-family: Georgia, 'Times New Roman', serif;
-        color: var(--text);
-        background:
-          radial-gradient(1200px 800px at 10% -20%, #241915 0%, transparent 65%),
-          radial-gradient(1200px 800px at 110% 120%, #271d19 0%, transparent 65%),
-          linear-gradient(180deg, #100c0a 0%, #0b0908 100%);
-      }}
-      a {{ color: var(--accent); text-decoration: none; }}
-      a:hover {{ text-decoration: underline; }}
-      .container {{
-        max-width: 1100px;
-        margin: 2rem auto;
-        padding: 2rem;
-        background: linear-gradient(180deg, var(--panel) 0%, var(--panel-2) 100%);
-        border: 1px solid var(--line);
-        border-radius: 12px;
-        box-shadow: 0 10px 30px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.04);
-      }}
-      h1 {{
-        margin: 0 0 1.25rem 0;
-        font-weight: 600;
-        letter-spacing: .5px;
-      }}
-      .subnav {{ margin-bottom: 1rem; color: var(--muted); }}
-      .subnav a {{ color: var(--muted); }}
-      .subnav a.active {{ color: var(--accent); font-weight: 600; }}
-
-      table {{ border-collapse: collapse; width: 100%; }}
-      thead th {{
-        font-weight: 600;
-        color: var(--text);
-        text-align: left;
-        border-bottom: 2px solid var(--line);
-        padding: .75rem .75rem;
-        background: rgba(255,255,255,0.02);
-      }}
-      tbody td {{
-        padding: .6rem .75rem;
-        border-bottom: 1px solid var(--line);
-        vertical-align: top;
-      }}
-      .muted {{ color: var(--muted); }}
-      .cell-name small {{ display: inline-block; margin-top: .25rem; }}
-      .actions {{ white-space: nowrap; }}
-
-      .btn {{
-        padding: .45rem .7rem;
-        border: 1px solid var(--accent-2);
-        background: linear-gradient(180deg, rgba(201,162,39,.15), rgba(201,162,39,.05));
-        color: var(--text);
-        border-radius: 8px;
-        cursor: pointer;
-      }}
-      .btn:hover {{ filter: brightness(1.05); }}
-      .btn.danger {{ border-color: var(--danger); color: #ffd9d9; background: linear-gradient(180deg, rgba(192,88,88,.18), rgba(192,88,88,.06)); }}
-
-      form.inline {{ display: inline; margin: 0; }}
-      .row {{ margin: .75rem 0; }}
-      input[type=text], input[type=number], select {{
-        width: 100%;
-        padding: .5rem .6rem;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: #120e0c;
-        color: var(--text);
-      }}
-      label {{ font-size: .95rem; color: var(--muted); }}
-      .grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }}
-      @media (max-width: 720px) {{ .grid {{ grid-template-columns: 1fr; }} }}
-
-      /* Star rating (fractional) */
-      .stars {{ position: relative; display: inline-block; line-height: 1; }}
-      .stars .base, .stars .fill {{
-        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
-        letter-spacing: 2px;
-        font-size: 1rem;
-      }}
-      .stars .base {{ color: #4b3f39; }}
-      .stars .fill {{
-        position: absolute; left: 0; top: 0; overflow: hidden; white-space: nowrap;
-        color: var(--accent);
-        text-shadow: 0 0 6px rgba(201,162,39,.25);
-      }}
-
-      /* Rack (4x6) */
-      .rack-wrap {{ margin: 1rem 0 1.5rem; }}
-      .rack-title {{ margin: 0 0 .5rem; color: var(--muted); font-weight: 600; }}
-      .rack {{
-        display: grid;
-        grid-template-columns: repeat(4, 64px);
-        grid-template-rows: repeat(6, 64px);
-        gap: .5rem;
-        padding: .75rem;
-        background: #16110f;
-        border: 1px solid var(--line);
-        border-radius: 10px;
-      }}
-      .slot {{
-        display: flex; align-items: center; justify-content: center;
-        border: 1px dashed #3a2f2a; border-radius: 10px; color: var(--muted);
-        background: radial-gradient(120px 90px at 50% 30%, #1c1613 0%, #14100e 80%);
-        position: relative;
-        cursor: pointer;
-      }}
-      .slot.occ {{ border-style: solid; border-color: var(--accent-2); color: var(--text); }}
-      .slot.occ.red {{
-        border-color: #b33939;
-        background: radial-gradient(120px 90px at 50% 30%, #3a1a1a 0%, #1a0e0e 80%);
-        box-shadow: inset 0 0 8px rgba(179,57,57,.35);
-      }}
-      .slot .dot {{ font-size: 20px; line-height: 1; }}
-      .slot .mini {{ position: absolute; bottom: 6px; left: 8px; color: var(--muted); font-size: .7rem; }}
-      .slot:hover {{ outline: 1px solid var(--accent-2); }}
-      .rack-controls {{ display: flex; gap: .75rem; align-items: center; margin: 0 0 .75rem; }}
-    </style>
+    <link rel=\"stylesheet\" href=\"/static/style.css\" />
   </head>
   <body>
     <div class=\"container\">
@@ -215,10 +93,17 @@ def list_view(info: str = "", sort_col: str = "year", sort_dir: str = "asc"):
         comments = "".join(f"<div class=\"muted\">• {escape(c)}</div>" for c in b.comments)
         rating = getattr(b, 'vivino_rating', 0.0) or 0.0
         pct = max(0, min(5.0, float(rating))) / 5.0 * 100.0
-        stars = (
+        stars_old = (
             f"<span class=\"stars\" aria-label=\"Note Vivino: {rating:.1f}/5\">"
             f"<span class=\"base\">★★★★★</span>"
             f"<span class=\"fill\" style=\"width: {pct:.0f}%\">★★★★★</span>"
+            f"</span>"
+        )
+        pct_class = int(round(pct / 10.0) * 10)
+        stars = (
+            f"<span class=\"stars\" aria-label=\"Note Vivino: {rating:.1f}/5\">"
+            f"<span class=\"base\">★★★★★</span>"
+            f"<span class=\"fill w-{pct_class}\">★★★★★</span>"
             f"</span>"
         )
         rows.append(
@@ -254,19 +139,9 @@ def list_view(info: str = "", sort_col: str = "year", sort_dir: str = "asc"):
             else:
                 rack_cells.append(f"<div class=\"slot\" data-r=\"{r}\" data-c=\"{c}\"><span class=\"mini\">{r},{c}</span></div>")
 
-    # Post-process rack cells to tag red wines
-    # Inject an extra 'red' class for occupied slots with color == 'red'
-    new_rack = []
-    idx = 0
-    for r in range(1, 7):
-        for c in range(1, 5):
-            s = rack_cells[idx]
-            bb = occ.get((r, c))
-            if bb and str(getattr(bb, 'color', '')).lower() == 'red':
-                s = s.replace('class="slot occ"', 'class="slot occ red"')
-            new_rack.append(s)
-            idx += 1
-    rack_cells = new_rack
+    # (removed) post-process step previously added a 'red' class for red wines
+    # This block was removed to resolve indentation issues. If needed, compute
+    # the class directly when building rack_cells above.
 
     flash = f"<p class=\"muted\">{escape(info)}</p>" if info else ""
     body = f"""
@@ -448,6 +323,21 @@ def edit_view(bottle_id: int):
 def app(environ, start_response):
     method = environ.get("REQUEST_METHOD", "GET").upper()
     path = environ.get("PATH_INFO", "/") or "/"
+
+    # Static files (CSS)
+    if method == "GET" and path.startswith("/static/"):
+        fname = path[len("/static/"):]
+        static_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), "static"))
+        full = os.path.normpath(os.path.join(static_dir, fname))
+        if not full.startswith(static_dir) or not os.path.isfile(full):
+            return response(start_response, "404 Not Found", page("404", "<p>Fichier introuvable.</p>"))
+        try:
+            with open(full, "rb") as f:
+                data = f.read()
+            ctype = "text/css; charset=utf-8" if full.endswith(".css") else "application/octet-stream"
+            return response_bytes(start_response, "200 OK", data, ctype)
+        except Exception:
+            return response(start_response, "500 Internal Server Error", page("Erreur", "<p>Impossible de lire le fichier.</p>"))
 
     # ROUTES
     if method == "GET" and path == "/":

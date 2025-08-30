@@ -1,0 +1,200 @@
+    """.replace("{occ_js}", occ_js)
+    return page("Cave à vins", body + script)
+
+
+def edit_view(bottle_id: int):
+    b = cellar.bottles.get(bottle_id)
+    if not b:
+        return page("Introuvable", "<p>Bouteille introuvable.</p>")
+    comments = "".join(f"<li>{escape(c)}</li>" for c in b.comments) or "<li class=\"muted\">(aucun)</li>"
+    body = f"""
+      <h2>Éditer</h2>
+      <form method=\"post\" action=\"/edit\" class=\"grid\">
+        <input type=\"hidden\" name=\"id\" value=\"{b.id}\" />
+        <label>Nom<br><input type=\"text\" name=\"name\" value=\"{escape(b.name)}\" required /></label>
+        <label>Millésime<br><input type=\"number\" name=\"year\" value=\"{b.year}\" min=\"1900\" max=\"2100\" required /></label>
+        <label>Note Vivino (0–5)<br><input type=\"number\" name=\"vivino_rating\" step=\"0.1\" min=\"0\" max=\"5\" value=\"{getattr(b, 'vivino_rating', 0.0):.1f}\" /></label>
+        <label>Colonne (1–4)<br>
+          <select name=\"pos_col\">
+            <option value=\"\"{'' if (b.pos_col and b.pos_row) else ' selected'}>(Non placé)</option>
+            <option value=\"1\"{(' selected' if b.pos_col == 1 else '')}>1</option>
+            <option value=\"2\"{(' selected' if b.pos_col == 2 else '')}>2</option>
+            <option value=\"3\"{(' selected' if b.pos_col == 3 else '')}>3</option>
+            <option value=\"4\"{(' selected' if b.pos_col == 4 else '')}>4</option>
+          </select>
+        </label>
+        <label>Ligne (1–6)<br>
+          <select name=\"pos_row\">
+            <option value=\"\"{'' if (b.pos_col and b.pos_row) else ' selected'}>(Non placé)</option>
+            <option value=\"1\"{(' selected' if b.pos_row == 1 else '')}>1</option>
+            <option value=\"2\"{(' selected' if b.pos_row == 2 else '')}>2</option>
+            <option value=\"3\"{(' selected' if b.pos_row == 3 else '')}>3</option>
+            <option value=\"4\"{(' selected' if b.pos_row == 4 else '')}>4</option>
+            <option value=\"5\"{(' selected' if b.pos_row == 5 else '')}>5</option>
+            <option value=\"6\"{(' selected' if b.pos_row == 6 else '')}>6</option>
+          </select>
+        </label>
+        <div class=\"row\"><button class=\"btn\" type=\"submit\">Enregistrer</button>
+          <form class=\"inline\" method=\"post\" action=\"/fetch_rating\">\n            <input type=\"hidden\" name=\"id\" value=\"{b.id}\" />\n            <button class=\"btn\" type=\"submit\">↻ Mettre à jour automatiquement</button>\n          </form>
+        </div>
+      </form>
+      <h3>Commentaires</h3>
+      <ul>{comments}</ul>
+      <form method=\"post\" action=\"/comment\" class=\"row\">\n        <input type=\"hidden\" name=\"id\" value=\"{b.id}\" />\n        <input type=\"text\" name=\"text\" placeholder=\"Ajouter un commentaire\" required />\n        <button class=\"btn\" type=\"submit\">Ajouter</button>\n      </form>
+    """
+    return page(f"Éditer: {b.name}", body)
+
+
+def app(environ, start_response):
+    method = environ.get("REQUEST_METHOD", "GET").upper()
+    path = environ.get("PATH_INFO", "/") or "/"
+
+    # ROUTES
+    if method == "GET" and path == "/":
+        qs = parse_qs(environ.get("QUERY_STRING", ""))
+        info = (qs.get("info") or [""])[0]
+        sort_col = (qs.get("sort") or ["year"])[0]
+        sort_dir = (qs.get("dir") or ["asc"])[0]
+        return response(start_response, "200 OK", list_view(info, sort_col, sort_dir))
+
+    if method == "GET" and path == "/add":
+        return response(start_response, "200 OK", list_view())
+
+    if method == "POST" and path == "/add":
+        form = read_post(environ)
+        name = (form.get("name") or "").strip()
+        year_raw = (form.get("year") or "").strip()
+        try:
+            year = int(year_raw)
+        except ValueError:
+            return response(start_response, "400 Bad Request", page("Erreur", "<p>Millésime invalide.</p>"))
+        if not name:
+            return response(start_response, "400 Bad Request", page("Erreur", "<p>Nom requis.</p>"))
+        color = (form.get("color") or "white").strip().lower()
+        bottle = cellar.add_bottle(name, year, color=color)
+        # Optional position on add
+        pos_col_raw = (form.get("pos_col") or "").strip()
+        pos_row_raw = (form.get("pos_row") or "").strip()
+        if pos_col_raw and pos_row_raw:
+            try:
+                pc = int(pos_col_raw); pr = int(pos_row_raw)
+                cellar.edit_bottle(bottle.id, pos_row=pr, pos_col=pc)
+            except ValueError:
+                pass
+        # Attempt immediate rating fetch (best-effort)
+        try:
+            fetch_and_update_rating(bottle.id)
+        except Exception:
+            pass
+        return redirect(start_response, "/")
+
+    if method == "GET" and path == "/edit":
+        qs = parse_qs(environ.get("QUERY_STRING", ""))
+        try:
+            bid = int((qs.get("id") or [""])[0])
+        except ValueError:
+            return response(start_response, "400 Bad Request", page("Erreur", "<p>ID invalide.</p>"))
+        return response(start_response, "200 OK", edit_view(bid))
+
+    if method == "POST" and path == "/edit":
+        form = read_post(environ)
+        try:
+            bid = int(form.get("id", ""))
+        except ValueError:
+            return response(start_response, "400 Bad Request", page("Erreur", "<p>ID invalide.</p>"))
+        name = (form.get("name") or "").strip()
+        year_raw = (form.get("year") or "").strip()
+        color = (form.get("color") or "").strip().lower()
+        rating_raw = (form.get("vivino_rating") or "").strip()
+        pos_col_raw = (form.get("pos_col") or "").strip()
+        pos_row_raw = (form.get("pos_row") or "").strip()
+        try:
+            year = int(year_raw)
+        except ValueError:
+            return response(start_response, "400 Bad Request", page("Erreur", "<p>Millésime invalide.</p>"))
+        rating: Optional[float]
+        if rating_raw == "":
+            rating = None
+        else:
+            try:
+                rating = float(rating_raw)
+            except ValueError:
+                return response(start_response, "400 Bad Request", page("Erreur", "<p>Note Vivino invalide.</p>"))
+        # Position: require both to set; otherwise clear
+        if pos_col_raw and pos_row_raw:
+            try:
+                pc = int(pos_col_raw)
+                pr = int(pos_row_raw)
+                pr_set: Optional[int] = pr
+                pc_set: Optional[int] = pc
+            except ValueError:
+                pr_set = None; pc_set = None
+        else:
+            pr_set = None; pc_set = None
+        cellar.edit_bottle(bid, name=name, year=year, vivino_rating=rating, pos_row=pr_set, pos_col=pc_set, color=color or None)
+        return redirect(start_response, f"/edit?id={bid}")
+
+    if method == "POST" and path == "/delete":
+        form = read_post(environ)
+        try:
+            bid = int(form.get("id", ""))
+        except ValueError:
+            return response(start_response, "400 Bad Request", page("Erreur", "<p>ID invalide.</p>"))
+        cellar.remove_bottle(bid)
+        return redirect(start_response, "/")
+
+    if method == "POST" and path == "/comment":
+        form = read_post(environ)
+        try:
+            bid = int(form.get("id", ""))
+        except ValueError:
+            return response(start_response, "400 Bad Request", page("Erreur", "<p>ID invalide.</p>"))
+        text = (form.get("text") or "").strip()
+        if text:
+            try:
+                cellar.add_comment(bid, text)
+            except KeyError:
+                pass
+        return redirect(start_response, f"/edit?id={bid}")
+
+    if method == "POST" and path == "/place":
+        form = read_post(environ)
+        try:
+            bid = int(form.get("id", ""))
+            r = int(form.get("row", ""))
+            c = int(form.get("col", ""))
+        except ValueError:
+            return response(start_response, "400 Bad Request", page("Erreur", "<p>Données invalides.</p>"))
+        if not (1 <= r <= 6 and 1 <= c <= 4):
+            return response(start_response, "400 Bad Request", page("Erreur", "<p>Position hors limites.</p>"))
+        cellar.edit_bottle(bid, pos_row=r, pos_col=c)
+        return redirect(start_response, f"/?info={quote_plus(f'Placée en {r},{c}')}" )
+
+    if method == "POST" and path == "/fetch_rating":
+        form = read_post(environ)
+        try:
+            bid = int(form.get("id", ""))
+        except ValueError:
+            return response(start_response, "400 Bad Request", page("Erreur", "<p>ID invalide.</p>"))
+        try:
+            fetch_and_update_rating(bid)
+        except Exception:
+            pass
+        return redirect(start_response, f"/edit?id={bid}")
+
+    if method == "POST" and path == "/fetch_all_ratings":
+        ok, fail = fetch_all_and_counts()
+        msg = f"Notes mises à jour: {ok} succès, {fail} échecs"
+        return redirect(start_response, f"/?info={quote_plus(msg)}")
+
+    return response(start_response, "404 Not Found", page("404", "<p>Page introuvable.</p>"))
+
+
+# ---- Vivino rating fetcher (best-effort, HTML heuristics) ----
+def fetch_and_update_rating(bottle_id: int) -> Tuple[bool, str]:
+    b = cellar.bottles.get(bottle_id)
+    if not b:
+        return False, "Bouteille introuvable"
+    url = b.vivino_url
+    if not url:
+        return False, "Lien Vivino manquant"
