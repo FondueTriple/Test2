@@ -1,27 +1,27 @@
-# Gestion de cave à vins
+﻿# Gestion de cave Ã  vins
 
-Cette application simple permet de gérer votre cave à vins en ligne de commande.
+Cette application simple permet de gÃ©rer votre cave Ã  vins en ligne de commande.
 
-## Fonctionnalités
-- Ajouter une bouteille avec son millésime
+## FonctionnalitÃ©s
+- Ajouter une bouteille avec son millÃ©sime
 - Supprimer une bouteille
 - Ajouter des commentaires sur une bouteille
 - Lien automatique vers la recherche Vivino pour voir les notes
 
-Les données sont stockées dans un fichier `cellar.json`.
+Les donnÃ©es sont stockÃ©es dans un fichier `cellar.json`.
 
 ## Utilisation
 
 ```bash
 python wine_cli.py add "Chateau Margaux" 2015
 python wine_cli.py list
-python wine_cli.py comment 1 "Très bon"
+python wine_cli.py comment 1 "TrÃ¨s bon"
 python wine_cli.py remove 1
 ```
 
 ## Tests
 
-Exécuter les tests avec:
+ExÃ©cuter les tests avec:
 
 ```bash
 pytest
@@ -29,7 +29,7 @@ pytest
 
 ## Interface utilisateur
 
-Un petit menu interactif est disponible pour gérer la cave directement depuis le terminal:
+Un petit menu interactif est disponible pour gÃ©rer la cave directement depuis le terminal:
 
 ```bash
 python wine_ui.py
@@ -37,23 +37,32 @@ python wine_ui.py
 
 ## Interface web
 
-Deux options sont disponibles:
+Cette version utilise un frontend React (Vite) et une API Flask.
 
-- Sans dépendances (WSGI simple): `python wine_web.py` → ouvrir `http://127.0.0.1:8000`
-- Version Flask (recommandée): instructions ci‑dessous
-
-### Version Flask
-
-Installation des dépendances (dans votre venv):
+Backend (Flask API):
 
 ```bash
 pip install -r requirements.txt
-```
-
-Lancer le serveur de développement:
-
-```bash
 python app_flask.py
 ```
 
-Puis ouvrir `http://127.0.0.1:5000` dans votre navigateur pour lister, ajouter, éditer, commenter et supprimer des bouteilles.
+L'API est servie sous `http://127.0.0.1:5000/api/...`.
+
+Frontend (React + Vite):
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Ouvrir `http://127.0.0.1:5173`. Le proxy Vite redirige `/api` vers `http://127.0.0.1:5000`.
+
+Build de production et service par Flask:
+
+```bash
+cd frontend && npm run build && cd ..
+python app_flask.py
+```
+
+Quand `frontend/dist` existe, Flask sert automatiquement l'app React à `/`.
