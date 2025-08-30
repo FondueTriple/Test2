@@ -8,6 +8,19 @@ import urllib.request
 import urllib.error
 import socket
 import json
+    # Post-process rack cells to tag red wines
+    # This avoids touching the original append lines and simply injects a 'red' class
+    new_rack = []
+    idx = 0
+    for r in range(1, 7):
+        for c in range(1, 5):
+            s = rack_cells[idx]
+            bb = occ.get((r, c))
+            if bb and getattr(bb, 'color', 'white') == 'red':
+                s = s.replace('class=\"slot occ\"', 'class=\"slot occ red\"')
+            new_rack.append(s)
+            idx += 1
+    rack_cells = new_rack
 
 from wine_cellar import WineCellar
 
@@ -168,6 +181,11 @@ def page(title: str, body: str) -> str:
         cursor: pointer;
       }}
       .slot.occ {{ border-style: solid; border-color: var(--accent-2); color: var(--text); }}
+      .slot.occ.red {{
+        border-color: #b33939;
+        background: radial-gradient(120px 90px at 50% 30%, #3a1a1a 0%, #1a0e0e 80%);
+        box-shadow: inset 0 0 8px rgba(179,57,57,.35);
+      }}
       .slot .dot {{ font-size: 20px; line-height: 1; }}
       .slot .mini {{ position: absolute; bottom: 6px; left: 8px; color: var(--muted); font-size: .7rem; }}
       .slot:hover {{ outline: 1px solid var(--accent-2); }}
@@ -263,6 +281,18 @@ def list_view(info: str = ""):
       <h2>Ajouter une bouteille</h2>
       <form method=\"post\" action=\"/add\" class=\"grid\">
         <label>Nom<br><input type=\"text\" name=\"name\" required /></label>
+        <label>Couleur<br>
+          <select name=\"color\">
+            <option value=\"white\">Blanc</option>
+            <option value=\"red\">Rouge</option>
+          </select>
+        </label>
+        <label>Couleur<br>
+          <select name=\"color\">
+            <option value=\"white\"{(' selected' if getattr(b, 'color', 'white') == 'white' else '')}>Blanc</option>
+            <option value=\"red\"{(' selected' if getattr(b, 'color', 'white') == 'red' else '')}>Rouge</option>
+          </select>
+        </label>
         <label>Millésime<br><input type=\"number\" name=\"year\" min=\"1900\" max=\"2100\" required /></label>
         <label>Colonne (1–4)<br>
           <select name=\"pos_col\">
@@ -378,7 +408,8 @@ def app(environ, start_response):
             return response(start_response, "400 Bad Request", page("Erreur", "<p>Millésime invalide.</p>"))
         if not name:
             return response(start_response, "400 Bad Request", page("Erreur", "<p>Nom requis.</p>"))
-        bottle = cellar.add_bottle(name, year)
+        color = (form.get("color") or "white").strip().lower()
+        bottle = cellar.add_bottle(name, year, color=color)
         # Optional position on add
         pos_col_raw = (form.get("pos_col") or "").strip()
         pos_row_raw = (form.get("pos_row") or "").strip()
@@ -411,6 +442,7 @@ def app(environ, start_response):
             return response(start_response, "400 Bad Request", page("Erreur", "<p>ID invalide.</p>"))
         name = (form.get("name") or "").strip()
         year_raw = (form.get("year") or "").strip()
+        color = (form.get("color") or "").strip().lower()
         rating_raw = (form.get("vivino_rating") or "").strip()
         pos_col_raw = (form.get("pos_col") or "").strip()
         pos_row_raw = (form.get("pos_row") or "").strip()
@@ -437,7 +469,7 @@ def app(environ, start_response):
                 pr_set = None; pc_set = None
         else:
             pr_set = None; pc_set = None
-        cellar.edit_bottle(bid, name=name, year=year, vivino_rating=rating, pos_row=pr_set, pos_col=pc_set)
+        cellar.edit_bottle(bid, name=name, year=year, vivino_rating=rating, pos_row=pr_set, pos_col=pc_set, color=color or None)
         return redirect(start_response, f"/edit?id={bid}")
 
     if method == "POST" and path == "/delete":

@@ -14,6 +14,8 @@ class Bottle:
     vivino_rating: float = 0.0
     pos_row: Optional[int] = None  # 1..6
     pos_col: Optional[int] = None  # 1..4
+    # 'red' or 'white' (default to white for backward compatibility)
+    color: str = "white"
 
 
 class WineCellar:
@@ -45,12 +47,14 @@ class WineCellar:
         with open(self.filepath, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
 
-    def add_bottle(self, name: str, year: int) -> Bottle:
+    def add_bottle(self, name: str, year: int, color: str = "white") -> Bottle:
+        color_norm = color if color in ("red", "white") else "white"
         bottle = Bottle(
             id=self._next_id,
             name=name,
             year=year,
             vivino_url=generate_vivino_url(name, year),
+            color=color_norm,
         )
         self.bottles[bottle.id] = bottle
         self._next_id += 1
@@ -72,6 +76,7 @@ class WineCellar:
         vivino_rating: Optional[float] = None,
         pos_row: Optional[int] = None,
         pos_col: Optional[int] = None,
+        color: Optional[str] = None,
     ) -> bool:
         """Edit the name and/or year of an existing bottle.
 
@@ -89,6 +94,11 @@ class WineCellar:
             # Clamp rating between 0 and 5
             bottle.vivino_rating = max(0.0, min(5.0, float(vivino_rating)))
             changed = True
+        if color is not None:
+            color_norm = color if color in ("red", "white") else "white"
+            if getattr(bottle, "color", "white") != color_norm:
+                bottle.color = color_norm
+                changed = True
         # Handle position updates: if both provided, set; if one is None -> clear both
         if pos_row is not None or pos_col is not None:
             if pos_row is None or pos_col is None:
