@@ -59,6 +59,7 @@ def page(title: str, body: str) -> str:
   </head>
   <body>
     <div class=\"container\">
+      <div class=\"fr-banner\"></div>
       <h1>{escape(title)}</h1>
       <p class=\"subnav\"><a class=\"active\" href=\"/\">Liste des bouteilles</a> · <a href=\"/add\">Ajouter</a></p>
       {body}

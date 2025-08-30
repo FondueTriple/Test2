@@ -45,8 +45,22 @@ a:hover { text-decoration: underline; }
   border-radius: 12px;
   box-shadow: 0 10px 30px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.05);
 }
+/* In-container tricolor banner */
+.fr-banner {
+  height: 10px;
+  border-radius: 8px;
+  background: linear-gradient(90deg, var(--blue) 33.333%, var(--white) 33.333% 66.666%, var(--red) 66.666%);
+  margin: 0 0 1rem;
+}
 h1 { margin: 0 0 1.25rem 0; font-weight: 600; letter-spacing: .5px; }
-.subnav { margin-bottom: 1rem; color: var(--muted); }
+.subnav {
+  margin-bottom: 1rem;
+  color: var(--muted);
+  background: linear-gradient(90deg, rgba(0,85,164,.18), rgba(255,255,255,.05) 50%, rgba(239,65,53,.18));
+  border: 1px solid var(--line);
+  padding: .5rem .75rem;
+  border-radius: 8px;
+}
 .subnav a { color: var(--muted); }
 .subnav a.active { color: var(--accent); font-weight: 600; }
 
@@ -70,8 +84,8 @@ tbody td {
 
 .btn {
   padding: .45rem .7rem;
-  border: 1px solid var(--accent);
-  background: linear-gradient(180deg, rgba(0,85,164,.18), rgba(0,85,164,.06));
+  border: 1px solid var(--line);
+  background: linear-gradient(90deg, rgba(0,85,164,.22) 0%, rgba(255,255,255,.06) 50%, rgba(239,65,53,.22) 100%);
   color: var(--text);
   border-radius: 8px;
   cursor: pointer;
