@@ -42,3 +42,12 @@ def test_edit_bottle(tmp_path):
 
     assert cellar.edit_bottle(999, name="Nope") is False
 
+
+def test_color_persistence(tmp_path):
+    cellar_file = tmp_path / "cellar.json"
+    cellar = WineCellar(filepath=str(cellar_file))
+    bottle = cellar.add_bottle("Blanc", 2022, color="white")
+    assert bottle.color == "white"
+    cellar2 = WineCellar(filepath=str(cellar_file))
+    assert cellar2.bottles[bottle.id].color == "white"
+
