@@ -256,8 +256,14 @@ if __name__ == "__main__":
     # For local development with React dev server, enable CORS via a simple header
     @app.after_request
     def add_cors_headers(resp):
-        # Allow Vite dev server default port
-        resp.headers.setdefault("Access-Control-Allow-Origin", "http://localhost:5173")
+        # Allow Vite dev server (localhost or 127.0.0.1)
+        origin = (request.headers.get("Origin") or "").rstrip("/")
+        allowed = {"http://localhost:5173", "http://127.0.0.1:5173"}
+        if origin in allowed:
+            resp.headers["Access-Control-Allow-Origin"] = origin
+        else:
+            # default for simple dev
+            resp.headers.setdefault("Access-Control-Allow-Origin", "http://localhost:5173")
         resp.headers.setdefault("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS")
         resp.headers.setdefault("Access-Control-Allow-Headers", "Content-Type")
         return resp
