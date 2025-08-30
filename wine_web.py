@@ -8,19 +8,6 @@ import urllib.request
 import urllib.error
 import socket
 import json
-    # Post-process rack cells to tag red wines
-    # This avoids touching the original append lines and simply injects a 'red' class
-    new_rack = []
-    idx = 0
-    for r in range(1, 7):
-        for c in range(1, 5):
-            s = rack_cells[idx]
-            bb = occ.get((r, c))
-            if bb and getattr(bb, 'color', 'white') == 'red':
-                s = s.replace('class=\"slot occ\"', 'class=\"slot occ red\"')
-            new_rack.append(s)
-            idx += 1
-    rack_cells = new_rack
 
 from wine_cellar import WineCellar
 
@@ -203,9 +190,28 @@ def page(title: str, body: str) -> str:
 """
 
 
-def list_view(info: str = ""):
+def list_view(info: str = "", sort_col: str = "year", sort_dir: str = "asc"):
+    # Compute sorting
+    sort_col = (sort_col or "year").lower()
+    sort_dir = (sort_dir or "asc").lower()
+    reverse = sort_dir == "desc"
+    def sort_key(x):
+        if sort_col == "id":
+            return (x.id,)
+        if sort_col == "name":
+            return (str(getattr(x, 'name', '')).lower(),)
+        if sort_col == "year":
+            return (int(getattr(x, 'year', 0) or 0),)
+        if sort_col == "rating":
+            v = getattr(x, 'vivino_rating', None)
+            try:
+                return (float(v) if v is not None else -1.0,)
+            except Exception:
+                return (-1.0,)
+        return (int(getattr(x, 'year', 0) or 0), str(getattr(x, 'name', '')).lower())
+
     rows = []
-    for b in sorted(cellar.list_bottles(), key=lambda x: (x.year, x.name)):
+    for b in sorted(cellar.list_bottles(), key=sort_key, reverse=reverse):
         comments = "".join(f"<div class=\"muted\">• {escape(c)}</div>" for c in b.comments)
         rating = getattr(b, 'vivino_rating', 0.0) or 0.0
         pct = max(0, min(5.0, float(rating))) / 5.0 * 100.0
@@ -248,6 +254,20 @@ def list_view(info: str = ""):
             else:
                 rack_cells.append(f"<div class=\"slot\" data-r=\"{r}\" data-c=\"{c}\"><span class=\"mini\">{r},{c}</span></div>")
 
+    # Post-process rack cells to tag red wines
+    # Inject an extra 'red' class for occupied slots with color == 'red'
+    new_rack = []
+    idx = 0
+    for r in range(1, 7):
+        for c in range(1, 5):
+            s = rack_cells[idx]
+            bb = occ.get((r, c))
+            if bb and str(getattr(bb, 'color', '')).lower() == 'red':
+                s = s.replace('class="slot occ"', 'class="slot occ red"')
+            new_rack.append(s)
+            idx += 1
+    rack_cells = new_rack
+
     flash = f"<p class=\"muted\">{escape(info)}</p>" if info else ""
     body = f"""
       {flash}
@@ -272,7 +292,14 @@ def list_view(info: str = ""):
       </div>
       <table>
         <thead>
-          <tr><th>ID</th><th>Nom</th><th>Millésime</th><th>Note</th><th>Commentaires</th><th>Actions</th></tr>
+          <tr>
+            <th><a href=\"/?sort=id&dir={( 'desc' if (sort_col=='id' and sort_dir=='asc') else 'asc' )}\">ID</a></th>
+            <th><a href=\"/?sort=name&dir={( 'desc' if (sort_col=='name' and sort_dir=='asc') else 'asc' )}\">Nom</a></th>
+            <th><a href=\"/?sort=year&dir={( 'desc' if (sort_col=='year' and sort_dir=='asc') else 'asc' )}\">Millésime</a></th>
+            <th><a href=\"/?sort=rating&dir={( 'desc' if (sort_col=='rating' and sort_dir=='asc') else 'asc' )}\">Note</a></th>
+            <th>Commentaires</th>
+            <th>Actions</th>
+          </tr>
         </thead>
         <tbody>
           {''.join(rows) or '<tr><td colspan=6 class=\'muted\'>Aucune bouteille</td></tr>'}
@@ -285,12 +312,6 @@ def list_view(info: str = ""):
           <select name=\"color\">
             <option value=\"white\">Blanc</option>
             <option value=\"red\">Rouge</option>
-          </select>
-        </label>
-        <label>Couleur<br>
-          <select name=\"color\">
-            <option value=\"white\"{(' selected' if getattr(b, 'color', 'white') == 'white' else '')}>Blanc</option>
-            <option value=\"red\"{(' selected' if getattr(b, 'color', 'white') == 'red' else '')}>Rouge</option>
           </select>
         </label>
         <label>Millésime<br><input type=\"number\" name=\"year\" min=\"1900\" max=\"2100\" required /></label>
@@ -335,6 +356,45 @@ def list_view(info: str = ""):
           if (!bid) { alert('Sélectionnez d\'abord une bouteille.'); return; }
           rInput.value = r; cInput.value = c; form.submit();
         });
+      }
+
+      // Table sorting by clicking headers
+      var table = document.querySelector('table');
+      if (table && table.tBodies && table.tBodies[0]) {
+        var tbody = table.tBodies[0];
+        var headers = table.querySelectorAll('thead th');
+        var hasLinks = false;
+        for (var li = 0; li < headers.length; li++) { if (headers[li].querySelector('a')) { hasLinks = true; break; } }
+        if (!hasLinks) {
+          var numericCols = {0: true, 2: true, 3: true}; // ID, Millésime, Note
+          for (var i = 0; i < headers.length; i++) {
+            (function(idx){
+              var th = headers[idx];
+              th.style.cursor = 'pointer';
+              th.title = 'Trier';
+              th.addEventListener('click', function(){
+                var dir = th.getAttribute('data-dir') === 'asc' ? 'desc' : 'asc';
+                Array.prototype.forEach.call(headers, function(h){ h.removeAttribute('data-dir'); });
+                th.setAttribute('data-dir', dir);
+                var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+                rows.sort(function(a,b){
+                  var ta = a.children[idx] ? a.children[idx].innerText.trim() : '';
+                  var tb = b.children[idx] ? b.children[idx].innerText.trim() : '';
+                  if (numericCols[idx]) {
+                    var fa = parseFloat(ta.replace(/[^0-9.\-]/g, ''));
+                    var fb = parseFloat(tb.replace(/[^0-9.\-]/g, ''));
+                    if (isNaN(fa)) fa = -Infinity;
+                    if (isNaN(fb)) fb = -Infinity;
+                    return fa - fb;
+                  }
+                  return ta.localeCompare(tb);
+                });
+                if (dir === 'desc') rows.reverse();
+                rows.forEach(function(r){ tbody.appendChild(r); });
+              });
+            })(i);
+          }
+        }
       }
     })();
     </script>
@@ -393,7 +453,9 @@ def app(environ, start_response):
     if method == "GET" and path == "/":
         qs = parse_qs(environ.get("QUERY_STRING", ""))
         info = (qs.get("info") or [""])[0]
-        return response(start_response, "200 OK", list_view(info))
+        sort_col = (qs.get("sort") or ["year"])[0]
+        sort_dir = (qs.get("dir") or ["asc"])[0]
+        return response(start_response, "200 OK", list_view(info, sort_col, sort_dir))
 
     if method == "GET" and path == "/add":
         return response(start_response, "200 OK", list_view())
